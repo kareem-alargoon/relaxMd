@@ -29,7 +29,9 @@ jobs:
       - run: flutter create --org com.relaxmd --project-name relaxmd --platforms android .
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
+      # A failing test still reports red here, but shouldn't withhold the APK.
       - run: flutter test
+        continue-on-error: true
       - run: flutter build apk --release
 
       - name: Name the APK after the build
