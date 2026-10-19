@@ -49,7 +49,7 @@ flutter install
 ### Build on GitHub instead
 This repo is at <https://github.com/kareem-alargoon/relaxMd>. The workflow in `.github/workflows/build-apk.yml` builds the APK on every push to `main` (or from the Actions tab -> Build APK -> Run workflow).
 
-**Getting it onto your phone:** open <https://github.com/kareem-alargoon/relaxMd/releases/latest> in the phone browser and tap `RelaxMD-<run>.apk`. Every green build on `main` replaces that file, so the link always serves the newest APK. Android will ask you to allow installs from your browser the first time, and to confirm the update afterwards. The run's **Artifacts** section has the same APK as a zip, which needs you to be signed in to GitHub.
+**Getting it onto your phone:** sign in to GitHub in the phone browser once (the repo is private), then open <https://github.com/kareem-alargoon/relaxMd/releases/latest> and tap the `RelaxMD-<run>.apk` asset. Every green build on `main` replaces that file, so the link always serves the newest APK. Android asks you to allow installs from the browser the first time, and to confirm the update afterwards. The run's **Artifacts** section has the same APK as a zip, which is more awkward to unpack on a phone.
 
 ## Notes
 - Fonts are downloaded from Google Fonts the first time they're used, so the first launch needs internet. Until then the system font is shown.
