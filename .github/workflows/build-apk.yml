@@ -25,19 +25,76 @@ jobs:
           cache: true
 
       # Generates the Android project files that aren't in the repo yet.
-      # Existing files (like our AndroidManifest.xml) are kept.
+      # Existing files (our AndroidManifest.xml and android/app/build.gradle.kts) are kept.
       - run: flutter create --org com.relaxmd --project-name relaxmd --platforms android .
+
+      # Should a Flutter template ever write the Groovy twin of our Kotlin build file,
+      # Gradle would refuse to look at a module with both. Ours wins.
+      - name: Keep only the committed app build file
+        run: |
+          if [ -f android/app/build.gradle ] && [ -f android/app/build.gradle.kts ]; then
+            echo "::warning::flutter create wrote android/app/build.gradle; removing it in favour of the committed .kts"
+            rm android/app/build.gradle
+          fi
+
+      # Four secrets make the release signing work. Without them the build still goes
+      # green, just signed with a throwaway debug key (see android/app/build.gradle.kts).
+      - name: Look for the release signing secrets
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo "::warning::No release signing secrets (see the README). This APK is debug-signed and will not install over a differently signed one."
+          fi
+
+      - name: Unpack the release keystore
+        if: steps.signing.outputs.available == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/relaxmd-release.jks
+          # storeFile is resolved against the android/ directory.
+          {
+            echo "storeFile=app/relaxmd-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
+
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       # A failing test still reports red here, but shouldn't withhold the APK.
       - run: flutter test
         continue-on-error: true
-      - run: flutter build apk --release
+      # The run number becomes the versionCode, so each APK is an upgrade of the last.
+      - run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: Show which key signed the APK
+        run: |
+          APKSIGNER=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk \
+              | grep -E 'certificate DN|SHA-256 digest' || true
+          fi
 
       - name: Name the APK after the build
         run: |
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/RelaxMD-${GITHUB_RUN_NUMBER}.apk"
+
+      - name: Forget the signing material
+        if: always()
+        run: rm -f android/app/relaxmd-release.jks android/key.properties
 
       - uses: actions/upload-artifact@v4
         with:
