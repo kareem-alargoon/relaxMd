@@ -17,6 +17,12 @@ dependencies:
   file_picker: '>=8.1.2 <11.0.0'
   google_fonts: '>=6.2.1 <8.0.0'
 
+# shared_preferences_android 2.5.0 moved to calling its Kotlin code over JNI, and on the
+# phone that fails with NoSuchMethodError on SharedPreferencesApiRegistrar.getAll, so
+# the app can't load its settings. Stay on the last method-channel release until fixed.
+dependency_overrides:
+  shared_preferences_android: 2.4.28
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -116,6 +116,5 @@ lib/
   screens/                      home, reader, editor, reading settings
 test/                           unit and widget tests
 android/app/build.gradle.kts    release signing (the rest of android/ is generated)
-android/app/proguard-rules.pro  keeps plugin code Dart calls over JNI from being shrunk
 samples/sample.md               mixed Arabic/English file for trying the app
 ```
