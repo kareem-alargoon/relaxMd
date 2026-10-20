@@ -66,6 +66,11 @@ android {
         release {
             // One stable key for every build, so a new APK installs over the previous one.
             signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "debug")
+            // Keeps plugin code that Dart reaches over JNI from being shrunk away (see the file).
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
