@@ -22,6 +22,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned because android/app/build.gradle.kts is committed and has to match
+          # this version's Android template (3.47 moved to AGP 9 and the kotlin {} DSL).
+          flutter-version: 3.47.7
           cache: true
 
       # Generates the Android project files that aren't in the repo yet.

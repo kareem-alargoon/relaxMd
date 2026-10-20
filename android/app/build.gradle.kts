@@ -2,11 +2,12 @@
 // file - the one that needs a release signingConfig - stays under our control while the
 // rest of the Android project (settings.gradle.kts, the wrapper, MainActivity, resources)
 // is still generated at build time and keeps matching the installed Flutter version.
+// Apart from the signing parts it mirrors the app/build.gradle.kts template of the Flutter
+// version pinned in .github/workflows/build-apk.yml; bump the two together.
 import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     // The Flutter Gradle Plugin has to be applied after the Android and Kotlin ones.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -36,12 +37,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
@@ -70,6 +67,12 @@ android {
             // One stable key for every build, so a new APK installs over the previous one.
             signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "debug")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

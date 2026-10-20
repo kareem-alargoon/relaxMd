@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,8 +12,69 @@ import 'screens/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
-  runApp(RelaxMdApp(settings: AppSettings(prefs), library: DocLibrary(prefs)));
+  // Release builds draw a blank grey box for a widget that throws; show the error instead.
+  ErrorWidget.builder = (details) => Material(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(details.exceptionAsString(),
+              style: const TextStyle(color: Colors.red, fontSize: 12)),
+        ),
+      );
+  await start();
+}
+
+/// Loads the saved settings and runs the app. Anything that goes wrong here
+/// would otherwise leave the phone on the launch screen forever, because no
+/// frame is ever drawn - so the error is shown on screen instead.
+Future<void> start() async {
+  try {
+    final prefs = await SharedPreferences.getInstance()
+        .timeout(const Duration(seconds: 10));
+    runApp(RelaxMdApp(settings: AppSettings(prefs), library: DocLibrary(prefs)));
+  } catch (error, stack) {
+    debugPrint('RelaxMD failed to start: $error\n$stack');
+    runApp(StartupErrorApp(error: error, stack: stack, onRetry: start));
+  }
+}
+
+/// Shown instead of the app when startup fails, with the error so it can be reported.
+class StartupErrorApp extends StatelessWidget {
+  const StartupErrorApp(
+      {super.key, required this.error, required this.stack, required this.onRetry});
+
+  final Object error;
+  final StackTrace stack;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'RelaxMD',
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              const Text('تعذر تشغيل RelaxMD',
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const Text("RelaxMD couldn't start",
+                  style: TextStyle(fontSize: 18)),
+              const SizedBox(height: 16),
+              SelectableText('$error\n\n$stack',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => unawaited(onRetry()),
+                child: const Text('إعادة المحاولة / Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class RelaxMdApp extends StatelessWidget {
