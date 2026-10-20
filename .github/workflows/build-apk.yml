@@ -115,4 +115,7 @@ jobs:
             --title 'RelaxMD - latest build' \
             --notes 'Newest APK from main. Open this page on your phone and tap the .apk to install.' \
             --prerelease
+          # Each APK is named after its run, so drop the older ones and keep just the newest.
+          gh release view latest --json assets --jq '.assets[].name | select(endswith(".apk"))' \
+            | while read -r old; do gh release delete-asset latest "$old" --yes; done
           gh release upload latest dist/*.apk --clobber
