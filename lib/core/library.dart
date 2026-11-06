@@ -16,6 +16,19 @@ Future<String> readText(String path) async =>
 
 String baseName(String path) => path.split(RegExp(r'[\\/]')).last;
 
+/// On the desktop files are read and edited where they are; on the phone they
+/// are copied into the app first.
+bool get isDesktop => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+
+/// File types the app opens: from the picker, drag and drop or the command line.
+const markdownExtensions = ['md', 'markdown', 'txt'];
+
+bool isMarkdownPath(String path) {
+  final dot = path.lastIndexOf('.');
+  return dot >= 0 &&
+      markdownExtensions.contains(path.substring(dot + 1).toLowerCase());
+}
+
 class DocEntry {
   DocEntry({
     required this.path,
@@ -59,8 +72,9 @@ class DocEntry {
       };
 }
 
-/// Recent files and favorites. Opened files are copied into the app's own
-/// folder, so they can be edited and saved without storage permissions.
+/// Recent files and favorites. On the phone, opened files are copied into the
+/// app's own folder, so they can be edited and saved without storage
+/// permissions. On the desktop they stay where they are ([openPath]).
 class DocLibrary extends ChangeNotifier {
   DocLibrary(this._prefs) {
     _load();
@@ -133,9 +147,12 @@ class DocLibrary extends ChangeNotifier {
 
   Future<DocEntry> createNew(String fileName) => importText(fileName, '');
 
+  /// Opens the file at [path] in place (desktop), so edits go to the file itself.
+  DocEntry openPath(String path) => _register(File(path).absolute.path);
+
   DocEntry _register(String path) {
     for (final e in _entries) {
-      if (e.path == path) {
+      if (_samePath(e.path, path)) {
         touch(e);
         return e;
       }
@@ -160,14 +177,21 @@ class DocLibrary extends ChangeNotifier {
   }
 
   /// Removes the entry and deletes the app's copy. The original file the user
-  /// opened is never touched.
+  /// opened is never touched: a file opened in place is only forgotten.
   Future<void> remove(DocEntry entry) async {
     _entries.remove(entry);
     notifyListeners();
     await _save();
+    final dir = await docsDir();
+    final inAppFolder = _samePath(File(entry.path).parent.path, dir.path);
     final file = File(entry.path);
-    if (file.existsSync()) await file.delete();
+    if (inAppFolder && file.existsSync()) await file.delete();
   }
+
+  /// Windows paths are case-insensitive.
+  static bool _samePath(String a, String b) => Platform.isWindows
+      ? a.toLowerCase() == b.toLowerCase()
+      : a == b;
 
   /// Saves without notifying, so it is safe to call while a screen closes.
   void savePosition(DocEntry entry, double offset, double progress) {

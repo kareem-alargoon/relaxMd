@@ -2,23 +2,37 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/library.dart';
 import '../core/scopes.dart';
 import '../core/strings.dart';
 import '../core/themes.dart';
+import '../desktop/desktop_shell.dart';
 import 'editor_screen.dart';
 import 'reader_screen.dart';
 import 'reading_settings_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.initialFile});
+
+  /// A file to open as soon as the screen is up (from the command line).
+  final String? initialFile;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    final file = widget.initialFile;
+    if (file != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openPath(file));
+    }
+  }
+
   Future<void> _open(DocEntry entry) async {
     LibraryScope.read(context).touch(entry);
     await Navigator.of(context).push(
@@ -32,6 +46,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final library = LibraryScope.read(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
+      if (isDesktop) {
+        final result = await FilePicker.platform.pickFiles(
+            type: FileType.custom, allowedExtensions: markdownExtensions);
+        final path = result?.files.single.path;
+        if (path != null) await _openPath(path);
+        return;
+      }
       final result =
           await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
       final file = result?.files.single;
@@ -44,6 +65,13 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('${s.openFailed}: $e')));
     }
+  }
+
+  /// Opens a file in place (desktop): picked or from the command line.
+  Future<void> _openPath(String path) async {
+    await openInPlace(context, path);
+    // Refresh reading progress shown on the cards.
+    if (mounted) setState(() {});
   }
 
   Future<void> _newFile() async {
@@ -72,11 +100,28 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     ctrl.dispose();
     if (name == null || name.trim().isEmpty) return;
-    final entry = await library.createNew(name);
+    final entry = isDesktop
+        ? await _saveNewFile(name)
+        : await library.createNew(name);
+    if (entry == null) return;
     if (!mounted) return;
     await Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => EditorScreen(entry: entry)));
     if (mounted) await _open(entry);
+  }
+
+  /// Asks where to save a new file and creates it there (desktop).
+  Future<DocEntry?> _saveNewFile(String name) async {
+    final path = await FilePicker.platform.saveFile(
+      fileName: DocLibrary.sanitize(name),
+      type: FileType.custom,
+      allowedExtensions: markdownExtensions,
+    );
+    if (path == null) return null;
+    final file = File(isMarkdownPath(path) ? path : '$path.md');
+    if (!file.existsSync()) await file.writeAsString('');
+    if (!mounted) return null;
+    return LibraryScope.read(context).openPath(file.path);
   }
 
   Future<void> _actions(DocEntry entry) async {
@@ -107,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
         context: context,
         builder: (context) => AlertDialog(
           title: Text(s.removeTitle),
-          content: Text(s.removeBody),
+          content: Text(isDesktop ? s.removeBodyDesktop : s.removeBody),
           actions: [
             TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -130,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final recent = library.recent;
     final favorites = library.favorites;
 
-    return Scaffold(
+    final screen = Scaffold(
       appBar: AppBar(
         title: Text('RelaxMD',
             style: TextStyle(color: palette.accent, fontWeight: FontWeight.w700)),
@@ -145,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: recent.isEmpty
           ? _emptyState(s, palette)
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
+              padding: _listPadding(context),
               children: [
                 if (favorites.isNotEmpty) ...[
                   _section(s.favorites, palette),
@@ -173,6 +218,22 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ]),
     );
+
+    if (!isDesktop) return screen;
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyO, control: true): _openFile,
+        const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newFile,
+      },
+      child: Focus(autofocus: true, child: screen),
+    );
+  }
+
+  /// Keeps the file list a readable width on a wide window.
+  EdgeInsets _listPadding(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final side = width > 760 ? (width - 720) / 2 : 16.0;
+    return EdgeInsets.fromLTRB(side, 4, side, 120);
   }
 
   Widget _section(String title, ReaderPalette palette) => Padding(
@@ -180,7 +241,10 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Text(title, style: TextStyle(color: palette.muted, fontSize: 13)),
       );
 
-  Widget _card(S s, ReaderPalette palette, DocEntry e) => Card(
+  Widget _card(S s, ReaderPalette palette, DocEntry e) => GestureDetector(
+      // Right-click shows the same actions as a long press.
+      onSecondaryTap: () => _actions(e),
+      child: Card(
         elevation: 0,
         color: palette.card,
         margin: const EdgeInsets.only(bottom: 8),
@@ -198,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: () => _open(e),
           onLongPress: () => _actions(e),
         ),
-      );
+      ));
 
   Widget _emptyState(S s, ReaderPalette palette) => Center(
         child: Padding(
@@ -210,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(s.emptyBody,
+            Text(isDesktop ? s.emptyBodyDesktop : s.emptyBody,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: palette.muted)),
             const SizedBox(height: 24),

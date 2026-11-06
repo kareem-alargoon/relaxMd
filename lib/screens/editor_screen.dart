@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../core/arabic_search.dart';
@@ -215,7 +216,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final words = _wordPattern.allMatches(text).length;
     final busy = _dirty || _saving;
 
-    return Scaffold(
+    final screen = Scaffold(
       appBar: _finding ? _findBar(s) : _mainBar(s),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -259,6 +260,26 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
               _toolbar(s, palette),
             ]),
+    );
+
+    if (!isDesktop) return screen;
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          _saveTimer?.cancel();
+          _save();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyH, control: true):
+            _openFind,
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          if (_finding) {
+            _closeFind();
+          } else {
+            _done();
+          }
+        },
+      },
+      child: screen,
     );
   }
 

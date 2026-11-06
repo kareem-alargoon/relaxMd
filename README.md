@@ -16,6 +16,16 @@ See [REQUIREMENTS.md](REQUIREMENTS.md) for the full feature list and design.
 
 Coming in phase 4: PDF export, "Open with" from other apps, sharing, app icon, bundled offline fonts, keep screen on.
 
+## Windows desktop
+
+The same app runs on Windows, built by GitHub Actions (`.github/workflows/build-windows.yml`) on every push to `main` or `desktop`. Download the zip from the **windows-latest** release, unzip it anywhere and run `RelaxMD.exe`. To open `.md` files by double-click: right-click a file → Open with → Choose another app → browse to `RelaxMD.exe` → Always.
+
+On the desktop:
+- Files open **in place**: edits are saved to the file itself, and removing a file from the list never deletes it.
+- Drag a file onto the window to open it.
+- On a wide window the contents sit on one side and the reading settings (direction, RTL sensitivity, font...) on the other, so you see the text change as you move the sliders. Text can be selected and copied.
+- Shortcuts: `Ctrl+O` open, `Ctrl+N` new, `Ctrl+F` search (`F3` / `Shift+F3` next/previous), `Ctrl+E` edit, `Ctrl+S` save, `Ctrl+H` find and replace, `Ctrl` + `+` / `-` / `0` or `Ctrl` + mouse wheel zoom, `Ctrl+B` contents, `Ctrl+,` reading settings, `F5` reload the file, `Esc` back / close.
+
 ## Build the APK
 
 You need Flutter (stable) with the Android SDK, and JDK 17.

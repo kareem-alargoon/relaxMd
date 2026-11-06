@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -29,6 +31,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final _scroll = ScrollController();
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
+
+  /// Holds focus for the keyboard shortcuts while nothing else has it.
+  final _keysFocus = FocusNode();
   final _keyPool = <GlobalKey>[];
   late DocLibrary _library;
 
@@ -47,6 +52,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
   bool _caseSensitive = false;
   bool _wholeWord = false;
   RenderResult? _last;
+
+  /// Side panels shown next to the text on a wide window (desktop).
+  bool _showContents = true;
+  bool _showSettings = false;
+
+  /// Width from which the contents and settings sit beside the text.
+  static const _wideLayout = 1000.0;
+
+  /// Longest comfortable line; wider windows get bigger side margins.
+  static const _maxTextWidth = 860.0;
 
   // Pinch-to-zoom is tracked by hand so it doesn't fight with scrolling.
   final Map<int, Offset> _pointers = {};
@@ -72,6 +87,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _scroll.dispose();
     _searchCtrl.dispose();
     _searchFocus.dispose();
+    _keysFocus.dispose();
     _zoomNotifier.dispose();
     super.dispose();
   }
@@ -151,6 +167,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  /// Ctrl + mouse wheel zooms instead of scrolling.
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent ||
+        !HardwareKeyboard.instance.isControlPressed) {
+      return;
+    }
+    GestureBinding.instance.pointerSignalResolver.register(e, (event) {
+      final dy = (event as PointerScrollEvent).scrollDelta.dy;
+      _setZoom(_zoom + (dy < 0 ? 0.1 : -0.1));
+    });
+  }
+
   // Search
 
   void _openSearch() {
@@ -158,7 +186,66 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _searchFocus.requestFocus();
   }
 
+  void _toggleContents(bool wide) {
+    if (wide) {
+      setState(() => _showContents = !_showContents);
+    } else {
+      _scaffoldKey.currentState?.openEndDrawer();
+    }
+  }
+
+  void _toggleSettings(bool wide) {
+    if (wide) {
+      setState(() => _showSettings = !_showSettings);
+    } else {
+      showReadingSettings(context, zoom: _zoomNotifier, onZoomChanged: _setZoom);
+    }
+  }
+
+  /// Esc closes search first, then the settings panel, then the file.
+  void _escape() {
+    if (_searching) {
+      _closeSearch();
+    } else if (_showSettings) {
+      setState(() => _showSettings = false);
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  void _zoomBy(double delta) => _setZoom(_zoom + delta);
+
+  Map<ShortcutActivator, VoidCallback> _shortcuts(bool wide) => {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _openSearch,
+        const SingleActivator(LogicalKeyboardKey.f3): () => _step(1),
+        const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
+            _step(-1),
+        const SingleActivator(LogicalKeyboardKey.escape): _escape,
+        const SingleActivator(LogicalKeyboardKey.keyE, control: true): _edit,
+        const SingleActivator(LogicalKeyboardKey.keyW, control: true): () =>
+            Navigator.of(context).maybePop(),
+        const SingleActivator(LogicalKeyboardKey.f5): _load,
+        const SingleActivator(LogicalKeyboardKey.equal, control: true): () =>
+            _zoomBy(0.1),
+        const SingleActivator(LogicalKeyboardKey.equal,
+            control: true, shift: true): () => _zoomBy(0.1),
+        const SingleActivator(LogicalKeyboardKey.numpadAdd, control: true):
+            () => _zoomBy(0.1),
+        const SingleActivator(LogicalKeyboardKey.minus, control: true): () =>
+            _zoomBy(-0.1),
+        const SingleActivator(LogicalKeyboardKey.numpadSubtract,
+            control: true): () => _zoomBy(-0.1),
+        const SingleActivator(LogicalKeyboardKey.digit0, control: true): () =>
+            _setZoom(1),
+        const SingleActivator(LogicalKeyboardKey.keyB, control: true): () =>
+            _toggleContents(wide),
+        const SingleActivator(LogicalKeyboardKey.comma, control: true): () =>
+            _toggleSettings(wide),
+      };
+
   void _closeSearch() {
+    _keysFocus.requestFocus();
     setState(() {
       _searching = false;
       _query = '';
@@ -227,11 +314,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
       keyPool: _keyPool,
     ).render(_nodes);
     _last = result;
+    final wide = isDesktop && MediaQuery.sizeOf(context).width >= _wideLayout;
 
-    return Scaffold(
+    final body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+            ? Center(child: Text('${s.openFailed}\n$_error'))
+            : Stack(children: [
+                Positioned.fill(child: _content(s, settings.margin, result)),
+                PositionedDirectional(
+                  start: 16,
+                  bottom: 20,
+                  child: _zoomChip(palette),
+                ),
+              ]);
+
+    final screen = Scaffold(
       key: _scaffoldKey,
-      appBar: _searching ? _searchBar(s, result) : _mainBar(s),
-      endDrawer: _contentsDrawer(s, result),
+      appBar: _searching ? _searchBar(s, result) : _mainBar(s, wide),
+      endDrawer: wide ? null : _contentsDrawer(s, result),
       floatingActionButton: _searching
           ? null
           : FloatingActionButton.extended(
@@ -239,22 +340,56 @@ class _ReaderScreenState extends State<ReaderScreen> {
               icon: const Icon(Icons.edit_outlined),
               label: Text(s.edit),
             ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text('${s.openFailed}\n$_error'))
-              : Stack(children: [
-                  Positioned.fill(child: _content(s, settings.margin, result)),
-                  PositionedDirectional(
-                    start: 16,
-                    bottom: 20,
-                    child: _zoomChip(palette),
-                  ),
-                ]),
+      body: wide ? _wideBody(s, palette, result, body) : body,
+    );
+
+    if (!isDesktop) return screen;
+    return CallbackShortcuts(
+      bindings: _shortcuts(wide),
+      child: Focus(focusNode: _keysFocus, autofocus: true, child: screen),
     );
   }
 
-  PreferredSizeWidget _mainBar(S s) => AppBar(
+  /// Contents on one side, reading settings on the other, text in between.
+  Widget _wideBody(
+          S s, ReaderPalette palette, RenderResult result, Widget body) =>
+      Row(children: [
+        if (_showContents) ...[
+          SizedBox(
+            width: 280,
+            child: Material(
+                color: palette.card,
+                child: _contentsList(s, result, inDrawer: false)),
+          ),
+          VerticalDivider(width: 1, color: palette.line),
+        ],
+        Expanded(child: body),
+        if (_showSettings) ...[
+          VerticalDivider(width: 1, color: palette.line),
+          SizedBox(
+            width: 360,
+            child: Material(
+              color: palette.card,
+              child: Column(children: [
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: s.hidePanel,
+                    onPressed: () => setState(() => _showSettings = false),
+                  ),
+                ),
+                Expanded(
+                  child: ReadingSettingsSheet(
+                      zoom: _zoomNotifier, onZoomChanged: _setZoom),
+                ),
+              ]),
+            ),
+          ),
+        ],
+      ]);
+
+  PreferredSizeWidget _mainBar(S s, bool wide) => AppBar(
         title: Text(widget.entry.name, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
@@ -264,16 +399,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
           IconButton(
               icon: const Icon(Icons.toc),
               tooltip: s.contents,
-              onPressed: () => _scaffoldKey.currentState?.openEndDrawer()),
+              onPressed: () => _toggleContents(wide)),
           IconButton(
               icon: const Text('Aa',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               tooltip: s.readingSettings,
-              onPressed: () => showReadingSettings(context,
-                  zoom: _zoomNotifier, onZoomChanged: _setZoom)),
+              onPressed: () => _toggleSettings(wide)),
           PopupMenuButton<String>(
             onSelected: (v) {
-              if (v == 'fav') {
+              if (v == 'reload') {
+                _load();
+              } else if (v == 'fav') {
                 _library.toggleFavorite(widget.entry);
                 setState(() {});
               } else if (v == 'zoom') {
@@ -281,6 +417,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
               }
             },
             itemBuilder: (_) => [
+              if (isDesktop)
+                PopupMenuItem(value: 'reload', child: Text(s.reload)),
               PopupMenuItem(
                   value: 'fav',
                   child: Text(widget.entry.favorite ? s.unfavorite : s.favorite)),
@@ -332,37 +470,48 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   Widget _content(S s, double margin, RenderResult result) {
-    return Listener(
-      onPointerDown: _onPointerDown,
-      onPointerMove: _onPointerMove,
-      onPointerUp: _onPointerUp,
-      onPointerCancel: _onPointerUp,
-      child: NotificationListener<ScrollEndNotification>(
-        onNotification: (_) {
-          _savePosition();
-          return false;
-        },
-        child: Scrollbar(
-          controller: _scroll,
-          child: SingleChildScrollView(
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: result.blocks.isEmpty
+          ? [
+              Padding(
+                padding: const EdgeInsets.only(top: 48),
+                child: Text(s.emptyDoc, textAlign: TextAlign.center),
+              )
+            ]
+          : result.blocks,
+    );
+    return LayoutBuilder(builder: (context, constraints) {
+      // On a wide window the text keeps a comfortable line length.
+      final side = isDesktop
+          ? ((constraints.maxWidth - _maxTextWidth) / 2)
+              .clamp(margin, double.infinity)
+              .toDouble()
+          : margin;
+      return Listener(
+        onPointerSignal: isDesktop ? _onPointerSignal : null,
+        onPointerDown: _onPointerDown,
+        onPointerMove: _onPointerMove,
+        onPointerUp: _onPointerUp,
+        onPointerCancel: _onPointerUp,
+        child: NotificationListener<ScrollEndNotification>(
+          onNotification: (_) {
+            _savePosition();
+            return false;
+          },
+          child: Scrollbar(
             controller: _scroll,
-            physics: _pinching ? const NeverScrollableScrollPhysics() : null,
-            padding: EdgeInsets.fromLTRB(margin, 12, margin, 120),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: result.blocks.isEmpty
-                  ? [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 48),
-                        child: Text(s.emptyDoc, textAlign: TextAlign.center),
-                      )
-                    ]
-                  : result.blocks,
+            child: SingleChildScrollView(
+              controller: _scroll,
+              physics: _pinching ? const NeverScrollableScrollPhysics() : null,
+              padding: EdgeInsets.fromLTRB(side, 12, side, 120),
+              // Text can be selected and copied with the mouse on the desktop.
+              child: isDesktop ? SelectionArea(child: column) : column,
             ),
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _zoomChip(ReaderPalette palette) => Material(
@@ -388,8 +537,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
       );
 
   Widget _contentsDrawer(S s, RenderResult result) => Drawer(
-        child: SafeArea(
-          child: result.headings.isEmpty
+        child: SafeArea(child: _contentsList(s, result, inDrawer: true)),
+      );
+
+  Widget _contentsList(S s, RenderResult result, {required bool inDrawer}) =>
+      result.headings.isEmpty
               ? Center(child: Text(s.noHeadings))
               : ListView(children: [
                   ListTile(
@@ -406,7 +558,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis),
                       onTap: () {
-                        _scaffoldKey.currentState?.closeEndDrawer();
+                        if (inDrawer) {
+                          _scaffoldKey.currentState?.closeEndDrawer();
+                        }
                         final ctx = h.key.currentContext;
                         if (ctx != null) {
                           Scrollable.ensureVisible(ctx,
@@ -415,7 +569,5 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         }
                       },
                     ),
-                ]),
-        ),
-      );
+                ]);
 }

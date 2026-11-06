@@ -8,9 +8,10 @@ import 'core/library.dart';
 import 'core/scopes.dart';
 import 'core/settings.dart';
 import 'core/themes.dart';
+import 'desktop/desktop_shell.dart';
 import 'screens/home_screen.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   // Release builds draw a blank grey box for a widget that throws; show the error instead.
   ErrorWidget.builder = (details) => Material(
@@ -20,20 +21,28 @@ Future<void> main() async {
               style: const TextStyle(color: Colors.red, fontSize: 12)),
         ),
       );
-  await start();
+  // Windows passes the file that was double-clicked or opened with RelaxMD.
+  final file = args.where(isMarkdownPath).firstOrNull;
+  await start(initialFile: file);
 }
 
 /// Loads the saved settings and runs the app. Anything that goes wrong here
 /// would otherwise leave the phone on the launch screen forever, because no
 /// frame is ever drawn - so the error is shown on screen instead.
-Future<void> start() async {
+Future<void> start({String? initialFile}) async {
   try {
     final prefs = await SharedPreferences.getInstance()
         .timeout(const Duration(seconds: 10));
-    runApp(RelaxMdApp(settings: AppSettings(prefs), library: DocLibrary(prefs)));
+    runApp(RelaxMdApp(
+        settings: AppSettings(prefs),
+        library: DocLibrary(prefs),
+        initialFile: initialFile));
   } catch (error, stack) {
     debugPrint('RelaxMD failed to start: $error\n$stack');
-    runApp(StartupErrorApp(error: error, stack: stack, onRetry: start));
+    runApp(StartupErrorApp(
+        error: error,
+        stack: stack,
+        onRetry: () => start(initialFile: initialFile)));
   }
 }
 
@@ -78,10 +87,14 @@ class StartupErrorApp extends StatelessWidget {
 }
 
 class RelaxMdApp extends StatelessWidget {
-  const RelaxMdApp({super.key, required this.settings, required this.library});
+  const RelaxMdApp(
+      {super.key, required this.settings, required this.library, this.initialFile});
 
   final AppSettings settings;
   final DocLibrary library;
+
+  /// Opened right away, when the app was started with a file.
+  final String? initialFile;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +115,11 @@ class RelaxMdApp extends StatelessWidget {
             themeMode: followSystem ? ThemeMode.system : ThemeMode.light,
             localizationsDelegates: GlobalMaterialLocalizations.delegates,
             supportedLocales: const [Locale('en'), Locale('ar')],
-            home: const HomeScreen(),
+            navigatorKey: appNavigator,
+            builder: isDesktop
+                ? (context, child) => DesktopDropZone(child: child!)
+                : null,
+            home: HomeScreen(initialFile: initialFile),
           );
         }),
       ),

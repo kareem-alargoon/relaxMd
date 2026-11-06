@@ -1,0 +1,75 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, desktop]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Same version as the APK build.
+          flutter-version: 3.47.7
+          cache: true
+
+      # Generates the Windows runner (C++ host for the app); it isn't in the repo.
+      - run: flutter create --org com.relaxmd --project-name relaxmd --platforms windows .
+
+      # Window title and exe name: "RelaxMD" instead of the package name.
+      - name: Name the window and the exe
+        run: |
+          function Patch($file, $from, $to) {
+            $text = Get-Content $file -Raw
+            if (-not $text.Contains($from)) { throw "'$from' not found in $file - the Flutter template changed" }
+            Set-Content $file $text.Replace($from, $to) -NoNewline
+          }
+          Patch windows/runner/main.cpp 'L"relaxmd"' 'L"RelaxMD"'
+          Patch windows/CMakeLists.txt 'set(BINARY_NAME "relaxmd")' 'set(BINARY_NAME "RelaxMD")'
+
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      # A failing test still reports red here, but shouldn't withhold the build.
+      - run: flutter test
+        continue-on-error: true
+      - run: flutter build windows --release --build-number=${{ github.run_number }}
+
+      # The whole Release folder is the app: RelaxMD.exe needs the DLLs and data/ next to it.
+      - name: Zip the app
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "dist/RelaxMD-Windows-${env:GITHUB_RUN_NUMBER}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relaxmd-windows
+          path: dist/*.zip
+
+      # A fixed release page with just the newest zip, next to the APK's "latest".
+      - name: Publish to the rolling "windows-latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # "No such release" is an expected answer here, not a failure.
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view windows-latest *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create windows-latest --target $env:GITHUB_SHA `
+              --title 'RelaxMD for Windows - latest build' `
+              --notes 'Newest Windows build. Download the zip, unzip it anywhere and run RelaxMD.exe.' `
+              --prerelease
+          }
+          $old = gh release view windows-latest --json assets --jq '.assets[].name'
+          foreach ($name in $old) { if ($name -like '*.zip') { gh release delete-asset windows-latest $name --yes } }
+          gh release upload windows-latest (Get-Item dist/*.zip).FullName --clobber

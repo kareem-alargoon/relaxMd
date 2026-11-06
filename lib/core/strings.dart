@@ -34,6 +34,20 @@ class S {
       "This deletes RelaxMD's copy of the file, including your edits. The original file on your phone isn't affected.");
   String get openFailed => _t('تعذر فتح الملف', "Couldn't open the file");
 
+  // Desktop
+  String get emptyBodyDesktop => _t(
+      'اسحب ملف Markdown إلى النافذة أو اضغط Ctrl+O. الملفات التي تفتحها تظهر هنا.',
+      'Drag a Markdown file onto the window or press Ctrl+O. Files you open show up here.');
+  String get removeBodyDesktop => _t(
+      'سيُزال الملف من القائمة فقط. الملف نفسه لن يُحذف.',
+      "This only takes the file off the list. The file itself isn't deleted.");
+  String get dropHere => _t('أفلت الملف لفتحه', 'Drop the file to open it');
+  String get notMarkdown =>
+      _t('افتح ملف ‎.md أو ‎.txt', 'Open a .md or .txt file');
+  String get reload => _t('إعادة تحميل الملف', 'Reload file');
+  String get hidePanel => _t('إخفاء اللوحة', 'Hide panel');
+  String get showContents => _t('إظهار المحتويات', 'Show contents');
+
   String dateLabel(DateTime d) {
     final now = DateTime.now();
     final day = DateTime(d.year, d.month, d.day);

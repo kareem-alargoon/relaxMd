@@ -16,6 +16,7 @@ dependencies:
   path_provider: ^2.1.4
   file_picker: '>=8.1.2 <11.0.0'
   google_fonts: '>=6.2.1 <8.0.0'
+  desktop_drop: '>=0.5.0 <1.0.0'
 
 # Newer Android halves of these plugins call Java/Kotlin from Dart over JNI. R8 can't
 # see those calls, so the release build strips the classes they need and the app fails
