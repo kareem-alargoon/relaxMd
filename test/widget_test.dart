@@ -69,8 +69,7 @@ void main() {
   testWidgets('English words keep reading order in an RTL paragraph',
       (tester) async {
     const line = 'لو المحادثة عدّت الـ num_ctx، Ollama بيشيل أقدم';
-    final result = await pumpMarkdown(tester, '$line
-', query: 'Ollama');
+    final result = await pumpMarkdown(tester, line, query: 'Ollama');
     final shown = DirectionResolver.withLatinBreaks(line);
     expect(shown, isNot(line));
     expect(directionOf(tester, shown), TextDirection.rtl);
