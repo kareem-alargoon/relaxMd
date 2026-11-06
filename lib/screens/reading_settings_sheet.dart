@@ -33,6 +33,9 @@ class ReadingSettingsSheet extends StatelessWidget {
   /// 3 Arabic words out of 7 (43%): LTR at the default 50%, RTL at 43% or less.
   static const _sample = 'افتح ملف README.md من the main branch';
 
+  /// Without the reading-order fix "Ollama" shows up before "num_ctx".
+  static const _orderSample = 'لو المحادثة عدّت الـ num_ctx، Ollama بيشيل أقدم رسائل';
+
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
@@ -107,6 +110,32 @@ class ReadingSettingsSheet extends StatelessWidget {
                 ),
               ),
             ]),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(s.latinOrder,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: p.text)),
+              subtitle: Text(s.latinOrderHelp,
+                  style: TextStyle(color: p.muted, fontSize: 13)),
+              value: st.latinReadingOrder,
+              onChanged: (v) => st.update((x) => x.latinReadingOrder = v),
+            ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                  color: p.card, borderRadius: BorderRadius.circular(8)),
+              child: Text(
+                st.latinReadingOrder
+                    ? DirectionResolver.withLatinBreaks(_orderSample)
+                    : _orderSample,
+                textDirection: TextDirection.rtl,
+                style: GoogleFonts.getFont(st.font,
+                    textStyle: TextStyle(fontSize: 14, color: p.text)),
+              ),
+            ),
             _Label(s.font),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final f in AppSettings.fonts)

@@ -311,6 +311,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       searchOptions:
           SearchOptions(caseSensitive: _caseSensitive, wholeWord: _wholeWord),
       currentMatch: _current,
+      latinReadingOrder: settings.latinReadingOrder,
       keyPool: _keyPool,
     ).render(_nodes);
     _last = result;

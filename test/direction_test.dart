@@ -47,4 +47,38 @@ void main() {
     expect(rtl.resolve('English only'), TextDirection.rtl);
     expect(ltr.resolve('عربي فقط'), TextDirection.ltr);
   });
+
+  group('latinBreaks keeps English words in reading order', () {
+    const rlm = DirectionResolver.rlm;
+
+    test('splits English words around an Arabic comma', () {
+      const text = 'لو المحادثة عدّت الـ num_ctx، Ollama بيشيل';
+      expect(DirectionResolver.withLatinBreaks(text),
+          'لو المحادثة عدّت الـ num_ctx،$rlm Ollama بيشيل');
+    });
+
+    test('splits at a comma, colon or spaced dash', () {
+      expect(DirectionResolver.withLatinBreaks('نستخدم Python, Java هنا'),
+          'نستخدم Python,$rlm Java هنا');
+      expect(DirectionResolver.withLatinBreaks('خلي Note: ctx كده'),
+          'خلي Note:$rlm ctx كده');
+      expect(DirectionResolver.withLatinBreaks('بين GPU - CPU فرق'),
+          'بين GPU -$rlm CPU فرق');
+    });
+
+    test('leaves file names, URLs and plain spaces alone', () {
+      for (final text in [
+        'افتح ملف README.md من the main branch',
+        'زر https://example.com/a ok',
+        'الساعة 10:30 تمام',
+      ]) {
+        expect(DirectionResolver.latinBreaks(text), isEmpty, reason: text);
+      }
+    });
+
+    test('needs English on both sides', () {
+      expect(DirectionResolver.latinBreaks('شغل Ollama، وبعدين'), isEmpty);
+      expect(DirectionResolver.latinBreaks('خلاص، Ollama شغال'), isEmpty);
+    });
+  });
 }

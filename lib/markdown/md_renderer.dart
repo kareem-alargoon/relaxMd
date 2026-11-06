@@ -57,6 +57,7 @@ class MdRenderer {
     this.query = '',
     this.searchOptions = const SearchOptions(),
     this.currentMatch = -1,
+    this.latinReadingOrder = true,
     List<GlobalKey>? keyPool,
   })  : _keyPool = keyPool ?? <GlobalKey>[],
         _base = bodyStyle;
@@ -76,6 +77,10 @@ class MdRenderer {
   final String query;
   final SearchOptions searchOptions;
   final int currentMatch;
+
+  /// In RTL blocks, keeps English words separated by punctuation in reading
+  /// order (see [DirectionResolver.latinBreaks]).
+  final bool latinReadingOrder;
 
   /// Keys reused between builds so blocks keep their identity.
   final List<GlobalKey> _keyPool;
@@ -195,8 +200,15 @@ class MdRenderer {
     final dir = resolver.resolve(plain, fallback: documentDirection);
     final key = _nextKey();
     final (matches, first) = _matchesFor(plain, key);
+    final fixOrder = latinReadingOrder && dir == TextDirection.rtl;
+    // Search offsets are counted on [plain]; the marks go in only when the
+    // spans are built.
+    final breaks =
+        fixOrder ? DirectionResolver.latinBreaks(plain) : const <int>{};
     if (headingLevel != null) {
-      _headings.add(HeadingInfo(headingLevel, plain.trim(), key, dir));
+      final title = plain.trim();
+      _headings.add(HeadingInfo(headingLevel,
+          fixOrder ? DirectionResolver.withLatinBreaks(title) : title, key, dir));
     }
     return Padding(
       key: key,
@@ -205,7 +217,7 @@ class MdRenderer {
         bottom: bottom ?? (headingLevel != null ? _size * 0.4 : _paragraphGap),
       ),
       child: Text.rich(
-        _buildSpan(runs, matches, first),
+        _buildSpan(runs, matches, first, breaks),
         textDirection: dir,
         textAlign: TextAlign.start,
       ),
@@ -262,7 +274,8 @@ class MdRenderer {
     }
   }
 
-  TextSpan _buildSpan(List<_Run> runs, List<MatchRange> matches, int first) {
+  TextSpan _buildSpan(List<_Run> runs, List<MatchRange> matches, int first,
+      [Set<int> breaks = const {}]) {
     final children = <InlineSpan>[];
     var offset = 0;
     var mi = 0;
@@ -275,6 +288,18 @@ class MdRenderer {
       final text = run.text;
       final runStart = offset;
       final runEnd = offset + text.length;
+      // Text from [from] to [to] (block offsets), with the reading-order marks.
+      String piece(int from, int to) {
+        final raw = text.substring(from - runStart, to - runStart);
+        if (breaks.isEmpty) return raw;
+        final b = StringBuffer();
+        for (var i = from; i < to; i++) {
+          if (breaks.contains(i)) b.write(DirectionResolver.rlm);
+          b.write(raw[i - from]);
+        }
+        return b.toString();
+      }
+
       var pos = runStart;
       while (pos < runEnd) {
         while (mi < matches.length && matches[mi].end <= pos) {
@@ -283,18 +308,17 @@ class MdRenderer {
         if (mi < matches.length && matches[mi].start < runEnd) {
           final m = matches[mi];
           if (m.start > pos) {
-            children.add(_span(text.substring(pos - runStart, m.start - runStart), run));
+            children.add(_span(piece(pos, m.start), run));
             pos = m.start;
           }
           final end = m.end < runEnd ? m.end : runEnd;
           final color = first + mi == currentMatch
               ? palette.currentHighlight
               : palette.highlight;
-          children.add(_span(
-              text.substring(pos - runStart, end - runStart), run, color));
+          children.add(_span(piece(pos, end), run, color));
           pos = end;
         } else {
-          children.add(_span(text.substring(pos - runStart), run));
+          children.add(_span(piece(pos, runEnd), run));
           pos = runEnd;
         }
       }

@@ -64,4 +64,63 @@ class DirectionResolver {
     if (c.arabic == 0) return TextDirection.ltr;
     return c.arabicPercent >= threshold ? TextDirection.rtl : TextDirection.ltr;
   }
+
+  /// Right-to-left mark: invisible, but a strong RTL letter for the bidi algorithm.
+  static const rlm = '\u200F';
+
+  /// A separator between two phrases: punctuation followed by a space, or a
+  /// dash / slash / bar with spaces around it. "README.md" and "a:b" don't match.
+  static final _separator =
+      RegExp(r'[,،;؛:.!?؟]+(?=\s)|(?<=\s)[-–—/|](?=\s)');
+
+  /// Offsets where an [rlm] keeps English words in reading order inside an RTL
+  /// line.
+  ///
+  /// The bidi algorithm joins two English words and the punctuation between
+  /// them into one left-to-right run, so in "الـ num_ctx، Ollama بيشيل" the
+  /// reader meets "Ollama" before "num_ctx". A mark right after the separator
+  /// splits the run, and each word keeps its place in the sentence. Only
+  /// separators with English on both sides get one; the mark goes in front of
+  /// the character at each offset.
+  static Set<int> latinBreaks(String text) {
+    final out = <int>{};
+    for (final m in _separator.allMatches(text)) {
+      if (_latinBefore(text, m.start) && _latinAfter(text, m.end)) {
+        out.add(m.end);
+      }
+    }
+    return out;
+  }
+
+  /// [text] with the marks from [latinBreaks] put in.
+  static String withLatinBreaks(String text) {
+    final breaks = latinBreaks(text);
+    if (breaks.isEmpty) return text;
+    final b = StringBuffer();
+    for (var i = 0; i < text.length; i++) {
+      if (breaks.contains(i)) b.write(rlm);
+      b.write(text[i]);
+    }
+    return b.toString();
+  }
+
+  /// Whether the nearest letter before [end] is Latin (digits and symbols are skipped).
+  static bool _latinBefore(String text, int end) {
+    for (var i = end - 1; i >= 0; i--) {
+      final ch = text[i];
+      if (_latin.hasMatch(ch)) return true;
+      if (_arabic.hasMatch(ch)) return false;
+    }
+    return false;
+  }
+
+  /// Whether the nearest letter from [start] on is Latin.
+  static bool _latinAfter(String text, int start) {
+    for (var i = start; i < text.length; i++) {
+      final ch = text[i];
+      if (_latin.hasMatch(ch)) return true;
+      if (_arabic.hasMatch(ch)) return false;
+    }
+    return false;
+  }
 }

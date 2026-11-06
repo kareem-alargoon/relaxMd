@@ -107,6 +107,11 @@ class S {
   String get sensitivityHelp => _t(
       'كلما خفّضته، أصبح السطر من اليمين حتى لو كانت الكلمات الإنجليزية أكثر.',
       'Lower it to keep lines right-to-left even when English words outnumber Arabic ones.');
+  String get latinOrder =>
+      _t('ترتيب الكلمات الإنجليزية كما كُتبت', 'Keep English words in order');
+  String get latinOrderHelp => _t(
+      'يمنع تبديل أماكن كلمتين إنجليزيتين بينهما فاصلة أو نقطتان داخل سطر عربي.',
+      'Stops two English words with a comma or colon between them from swapping places in a right-to-left line.');
   String get font => _t('الخط', 'Font');
   String get fontSize => _t('حجم الخط', 'Font size');
   String get fileZoom => _t('تكبير هذا الملف', 'Zoom for this file');
